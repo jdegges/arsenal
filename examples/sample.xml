@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<arsenal>
+  <volume>
+    <name>downloads</name>
+    <root>/media/disk-0/downloads</root>
+    <address>192.168.0.25</address>
+    <port>22</port>
+    <log>/tmp/arsenal_volume.log</log>
+    <public_key>/home/user/.ssh/id_rsa.pub</public_key>
+    <private_key>/home/user/.ssh/id_rsa</private_key>
+    <username>user</username>
+  </volume>
+</arsenal>
