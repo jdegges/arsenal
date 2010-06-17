@@ -787,7 +787,10 @@ sftp_read (struct sftp_fd *fd, void *buf, size_t nbyte, off_t offset)
   sftp_lock (fd->sftp_ctx);
   /* if the requested offset is not sequential then seek */
   if (offset != fd->offset)
-    libssh2_sftp_seek64 (fd->handle, offset);
+    {
+      libssh2_sftp_seek64 (fd->handle, offset);
+      fd->offset = offset;
+    }
   if ((amount_read = libssh2_sftp_read (fd->handle, buf, nbyte)) < 0)
     {
       int err;

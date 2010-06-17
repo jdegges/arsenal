@@ -105,7 +105,7 @@ arsenal_read (const char *path, char *buf, size_t size, off_t offset,
 
   pthread_mutex_lock (&mutex);
   amount_read = sftp_read ((struct sftp_fd *) fi->fh, buf, size, offset);
-  if (amount_read < 0)
+  if (amount_read <= 0)
     {
       print_error ("sftp_read");
       if (errno == EOF)
