@@ -271,13 +271,20 @@ static struct fuse_operations arsenal_oper = {
   .bmap = NULL
 };
 
+void
+get_mount_point (int argc, char **argv)
+{
+  struct fuse_args argst = FUSE_ARGS_INIT (argc, argv);
+  fuse_parse_cmdline (&argst, &mount_point, NULL, NULL);
+}
+
 int
 main (int argc, char **argv)
 {
   int ret;
   struct fuse_args args = FUSE_ARGS_INIT (argc, argv);
 
-  mount_point = argv[argc-1];
+  get_mount_point (argc, argv);
   memset (&options, 0, sizeof (struct options));
   if (-1 == fuse_opt_parse (&args, &options, arsenal_opts, NULL))
     return -1;
