@@ -1,4 +1,6 @@
+AM_CPPFLAGS = -DDEBUGLOG='"$(DEBUGLOG)"'
+
 bin_PROGRAMS = arsenal
-arsenal_SOURCES = arsenal.c sftp.c list.c
+arsenal_SOURCES = arsenal.c sftp.c sftp_tree.c list.c
 arsenal_LDADD = $(LIBSSH2_LIBS) $(FUSE_LIBS) $(LIBXML_LIBS) $(PTHREAD_LIBS)
 arsenal_CFLAGS = $(LIBSSH2_CFLAGS) $(FUSE_CFLAGS) $(LIBXML_CFLAGS) $(PTHREAD_CFLAGS)

@@ -1,15 +1,32 @@
 #ifndef _H_LIBSFTP2_H
 #define _H_LIBSFTP2_H
 
-#include <sys/stat.h>
+#include <stdlib.h>
+#include <sys/statvfs.h>
 #include <dirent.h>
 
 struct sftp;
 struct sftp_dir;
 struct sftp_fd;
 
+#define ADDR_MAX 1024
+#define PORT_MAX 10
+
+struct volume
+{
+  char name[NAME_MAX];
+  char root[PATH_MAX];
+  char addr[ADDR_MAX];
+  char port[PORT_MAX];
+  char log[PATH_MAX];
+  char public_key[PATH_MAX];
+  char private_key[PATH_MAX];
+  char username[NAME_MAX];
+  char passphrase[NAME_MAX];
+};
+
 struct sftp *
-sftp_init (const char *path, const char *mount_point);
+sftp_init (struct volume *vol, const char *mount_point);
 
 void
 sftp_destroy (struct sftp *s);

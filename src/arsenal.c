@@ -11,6 +11,7 @@
 
 #include <fuse.h>
 #include <sftp.h>
+#include <sftp_tree.h>
 
 #define print_error(msg){ \
   fprintf (logfp, "[%s:%d in %s] ", __FILE__, __LINE__, __func__); \
@@ -27,10 +28,10 @@
 
 #define LOG_FILE "/tmp/arsenal.log"
 
-pthread_mutex_t mutex;
-static struct sftp *sftp_context = NULL;
-char *mount_point;
-FILE *logfp;
+static pthread_mutex_t mutex;
+static struct sftp_node *sftp_context = NULL;
+static char *mount_point;
+static FILE *logfp;
 
 struct options
 {
@@ -60,7 +61,7 @@ arsenal_getattr (const char *path, struct stat *buf)
 {
   memset (buf, 0, sizeof *buf);
 
-  if (sftp_lstat (sftp_context, path, buf) < 0)
+  if (sftp_tree_lstat (sftp_context, path, buf) < 0)
     {
       print_error ("sftp_lstat");
       errno = ENOENT;
@@ -74,9 +75,9 @@ arsenal_readlink (const char *path, char *buf, size_t bufsize)
 {
   int err;
 
-  if ((err = sftp_realpath (sftp_context, path, buf, bufsize)) < 0)
+  if ((err = sftp_tree_realpath (sftp_context, path, buf, bufsize)) < 0)
     {
-      print_error ("");
+      print_error ("sftp_realpath");
       return -1;
     }
 
@@ -86,7 +87,7 @@ arsenal_readlink (const char *path, char *buf, size_t bufsize)
 static int
 arsenal_open (const char *path, struct fuse_file_info *fi)
 {
-  if (0 == (fi->fh = (uint64_t) sftp_open (sftp_context, path, fi->flags,
+  if (0 == (fi->fh = (uint64_t) sftp_tree_open (sftp_context, path, fi->flags,
                                            O_RDONLY)))
     {
       print_error ("sftp_open");
@@ -124,7 +125,7 @@ arsenal_read (const char *path, char *buf, size_t size, off_t offset,
 static int
 arsenal_statfs (const char *path, struct statvfs *buf)
 {
-  if (sftp_statvfs (sftp_context, path, buf) < 0)
+  if (sftp_tree_statvfs (sftp_context, path, buf) < 0)
     {
       print_error ("sftp_statvfs");
       return -1;
@@ -142,7 +143,7 @@ arsenal_release (const char *path, struct fuse_file_info *fi)
 static int
 arsenal_opendir (const char *path, struct fuse_file_info *fi)
 {
-  if (0 == (fi->fh = (uint64_t) sftp_opendir (sftp_context, path)))
+  if (0 == (fi->fh = (uint64_t) sftp_tree_opendir (sftp_context, path)))
     {
       print_error ("sftp_opendir");
       return -ENOENT;
@@ -199,10 +200,10 @@ arsenal_init (struct fuse_conn_info *conn)
       return NULL;
     }
 
-  sftp_context = sftp_init (options.config_file_path, mount_point);
+  sftp_context = sftp_tree_init (options.config_file_path, mount_point);
   if (NULL == sftp_context)
     {
-      print_error ("sftp_init");
+      print_error ("sftp_tree_init");
       return NULL;
     }
   return NULL;
@@ -212,7 +213,7 @@ static void
 arsenal_destroy (void *vptr)
 {
   (void) vptr;
-  sftp_destroy (sftp_context);
+  sftp_tree_destroy (sftp_context);
   fclose (logfp);
   pthread_mutex_destroy (&mutex);
 }

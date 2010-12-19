@@ -21,11 +21,9 @@
 
 #include <libssh2.h>
 #include <libssh2_sftp.h>
-#include <libxml/parser.h>
 #include <list.h>
 
-#define ADDR_MAX 1024
-#define PORT_MAX 10
+#include <sftp.h>
 
 struct sftp
 {
@@ -53,19 +51,6 @@ struct sftp_fd
   LIBSSH2_SFTP *sftp;
   LIBSSH2_SFTP_HANDLE *handle;
   off_t offset;
-};
-
-struct volume
-{
-  char name[NAME_MAX];
-  char root[PATH_MAX];
-  char addr[ADDR_MAX];
-  char port[PORT_MAX];
-  char log[PATH_MAX];
-  char public_key[PATH_MAX];
-  char private_key[PATH_MAX];
-  char username[NAME_MAX];
-  char passphrase[NAME_MAX];
 };
 
 #define print_error(msg){ \
@@ -161,95 +146,9 @@ exit:
   return resolved_path;
 }
 
-#define parse_option(v, k){ \
-  if (!xmlStrcmp (cur->name, (const xmlChar *) k)) \
-    { \
-      key = xmlNodeListGetString (doc, cur->xmlChildrenNode, 1); \
-      strcpy (v, (const char *) key); \
-      xmlFree (key); \
-    } \
-}     
-
-struct volume *
-parse_volume (xmlDocPtr doc, xmlNodePtr cur)
-{ 
-  struct volume *vol;
-  xmlChar *key;
-
-  if (NULL == (vol = calloc (1, sizeof *vol)))
-    return NULL;
-  
-  cur = cur->xmlChildrenNode;
-  while (cur != NULL)
-    {
-      parse_option (vol->name, "name");
-      parse_option (vol->root, "root");
-      parse_option (vol->addr, "address");
-      parse_option (vol->port, "port");
-      parse_option (vol->log, "log");
-      parse_option (vol->public_key, "public_key");
-      parse_option (vol->private_key, "private_key");
-      parse_option (vol->username, "username");
-      parse_option (vol->passphrase, "passphrase");
-      cur = cur->next;
-    }
-  return vol;
-}
-
-struct list *
-parse_configuration (char *path)
-{
-  struct list *list;
-  xmlDocPtr doc;
-  xmlNodePtr cur;
-
-  if (NULL == (list = list_new ()))
-    return NULL;
-
-  if (NULL == (doc = xmlParseFile (path)))
-    {
-      print_error ("Document not parsed successfully.");
-      return NULL;
-    }
-
-  cur = xmlDocGetRootElement (doc);
-  if (NULL == (cur = xmlDocGetRootElement (doc)))
-    {
-      print_error ("empty document");
-      xmlFreeDoc (doc);
-      return NULL;
-    }
-
-  if (xmlStrcmp (cur->name, (const xmlChar *) "arsenal"))
-    {
-      print_error ("document of the wrong type, root node != arsenal");
-      xmlFreeDoc (doc);
-      return NULL;
-    }
-
-  cur = cur->xmlChildrenNode;
-  while (cur != NULL)
-    {
-      if (!xmlStrcmp (cur->name, (const xmlChar *) "volume"))
-        {
-          void *p = parse_volume (doc, cur);
-          if (NULL == p)
-            return NULL;
-          list_add (list, p);
-        }
-      cur = cur->next;
-    }
-
-  xmlFreeDoc (doc);
-  xmlCleanupParser ();
-  return list;
-}
-
 struct sftp *
-sftp_init (const char *path, char *mount_point)
+sftp_init (struct volume *vol, const char *mount_point)
 {
-  struct list *list = NULL;
-  struct volume *vol = NULL;
   struct sftp *s = NULL;
   LIBSSH2_SESSION *session = NULL;
   LIBSSH2_SFTP *sftp = NULL;
@@ -257,12 +156,7 @@ sftp_init (const char *path, char *mount_point)
   int sockfd = -1;
   int err;
 
-  if (NULL == path)
-    return NULL;
-
-  if (NULL == (list = parse_configuration ((char *) path))
-      || list_count (list) <= 0
-      || NULL == (vol = list_get (list, 0)))
+  if (NULL == vol)
     return NULL;
 
   if (NULL == vol->log)
@@ -361,8 +255,7 @@ sftp_init (const char *path, char *mount_point)
   s->session = session;
   s->sftp = sftp;
   s->logfp = logfp;
-  s->list = list;
-  s->mount_point = mount_point;
+  s->mount_point = (char *) mount_point;
   s->mount_size = strlen (mount_point);
 
   if ('\0' == *vol->root)
@@ -384,13 +277,6 @@ error:
   libssh2_exit ();
   if (NULL != logfp && 0 != fclose (logfp))
     print_error (strerror (errno));
-  if (NULL != list)
-    {
-      uint64_t i;
-      for (i = 0; i < list_count (list); i++)
-        free (list_get (list, i));
-      list_free (list);
-    }
   print_error ("sftp_init");
   return NULL;
 }

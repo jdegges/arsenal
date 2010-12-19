@@ -7,6 +7,12 @@ AC_CONFIG_HEADERS([config.h])
 # Checks for programs.
 AC_PROG_CC
 
+AC_ARG_ENABLE([debuglog],
+  AC_HELP_STRING([--enable-debuglog], [Path to write all debugging information]),
+  [debuglog=$enableval],
+  [debuglog="/tmp/arsenal.log"])
+AC_SUBST([DEBUGLOG], [${debuglog}])
+
 # Checks for libraries.
 ACX_PTHREAD([AC_SUBST([CC], ["${PTHREAD_CC}"])],
   [AC_MSG_ERROR(['pthreads' not found])])
