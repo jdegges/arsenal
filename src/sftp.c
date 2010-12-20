@@ -516,6 +516,24 @@ sftp_readlink (struct sftp *s, const char *path, char *buf, size_t bufsize)
   return err;
 }
 
+static void
+strshift (char *buf, int size, int amount)
+{
+  int i, j;
+
+  if (!amount)
+    return;
+
+  if (amount < 0)
+    for (i = 0, j = -amount; i < size && j < size; i++, j++)
+      buf[i] = buf[j];
+  else
+    for (i = size-2, j = size-2-amount; 0 < i && 0 < j; i--, j--)
+      buf[i] = buf[j];
+
+  buf[size-1] = '\0';
+}
+
 ssize_t
 sftp_realpath (struct sftp *s, const char *path, char *buf, size_t bufsize)
 {
@@ -527,6 +545,13 @@ sftp_realpath (struct sftp *s, const char *path, char *buf, size_t bufsize)
     {
       print_error ("Invalid arguments");
       return -1;
+    }
+
+  if (bufsize <= s->mount_size)
+    {
+      memcpy (buf, s->mount_point, bufsize);
+      buf[bufsize-1] = '\0';
+      return bufsize;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
@@ -545,13 +570,11 @@ sftp_realpath (struct sftp *s, const char *path, char *buf, size_t bufsize)
 
   if (0 < err)
     {
-      size_t i;
-      char *p;
-      for (i = 0; i < s->mount_size; i++)
-        buf[i] = s->mount_point[i];
-      for (p = buf+i, i = s->jail_len; i < (size_t) err; i++)
-        *p++ = buf[i];
-      *p = '\0';
+      strshift (buf, bufsize, s->mount_size - s->jail_len);
+      memcpy (buf, s->mount_point, s->mount_size);
+      err = err - s->jail_len + s->mount_size;
+      if (bufsize < err)
+        err = bufsize;
     }
 
   free (rpath);
