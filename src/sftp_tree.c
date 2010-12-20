@@ -1,6 +1,7 @@
 #include <sftp_tree.h>
 #include <sftp.h>
 #include <list.h>
+#include <debug.h>
 
 #include <libxml/parser.h>
 
@@ -34,16 +35,6 @@ struct args
   void *a4;
 };
 
-static FILE *DEBUGFP;
-
-#define print_error(format, ...){ \
-  fprintf (DEBUGFP, "[%d %s:%d in %s] ", time (NULL), __FILE__, __LINE__, \
-                                           __func__); \
-  fprintf (DEBUGFP, format, ##__VA_ARGS__); \
-  fprintf (DEBUGFP, "\n");\
-  fflush (DEBUGFP); \
-}
-
 #define parse_option(v, k){ \
   if (!xmlStrcmp (cur->name, (const xmlChar *) k)) \
     { \
@@ -69,7 +60,6 @@ parse_volume (xmlDocPtr doc, xmlNodePtr cur)
       parse_option (v->root, "root");
       parse_option (v->addr, "address");
       parse_option (v->port, "port");
-      parse_option (v->log, "log");
       parse_option (v->public_key, "public_key");
       parse_option (v->private_key, "private_key");
       parse_option (v->username, "username");

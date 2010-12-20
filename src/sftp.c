@@ -17,11 +17,11 @@
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 #include <list.h>
+#include <debug.h>
 
 #include <sftp.h>
 
@@ -31,7 +31,6 @@ struct sftp
   LIBSSH2_SESSION *session;
   LIBSSH2_SFTP *sftp;
   pthread_mutex_t mutex;
-  FILE *logfp;
   char jail[PATH_MAX];
   size_t jail_len;
   struct list *list;
@@ -53,42 +52,14 @@ struct sftp_fd
   off_t offset;
 };
 
-#define print_error(msg){ \
-  fprintf (stderr, "[%lu %s:%d in %s] ", time (NULL), __FILE__, __LINE__, \
-           __func__); \
-  fprintf (stderr, "%s\n", msg); \
-}
-
-#define printf_error(format, msg){ \
-  fprintf (stderr, "[%lu %s:%d in %s] ", time (NULL), __FILE__, __LINE__, \
-           __func__); \
-  fprintf (stderr, format, msg); \
-  fprintf (stderr, "\n"); \
-}
-
-#define fprint_error(stream, msg){ \
-  fprintf (stream, "[%lu %s:%d in %s] ", time (NULL), __FILE__, __LINE__, \
-           __func__); \
-  fprintf (stream, "%s\n", msg); \
-  fflush (stream); \
-}
-
-#define fprintf_error(stream, format, msg){ \
-  fprintf (stream, "[%lu %s:%d in %s] ", time (NULL), __FILE__, __LINE__, \
-           __func__); \
-  fprintf (stream, format, msg); \
-  fprintf (stream, "\n"); \
-  fflush (stream); \
-}
-
-#define pthread_error(stream, expr){ \
+#define pthread_error(expr){ \
   int err = (expr); \
   if (0 != err) \
-    fprint_error (stream, strerror (err)); \
+    print_error ("%s", strerror (err)); \
 }
 
-#define sftp_lock(s) pthread_error (s->logfp, pthread_mutex_lock(&s->mutex))
-#define sftp_unlock(s) pthread_error (s->logfp, pthread_mutex_unlock(&s->mutex))
+#define sftp_lock(s) pthread_error (pthread_mutex_lock(&s->mutex))
+#define sftp_unlock(s) pthread_error (pthread_mutex_unlock(&s->mutex))
 
 static char *
 resolve_path (struct sftp *s, const char *path, char *resolved_path)
@@ -108,7 +79,7 @@ resolve_path (struct sftp *s, const char *path, char *resolved_path)
       && NULL == (buf = resolved_path = calloc (PATH_MAX,
                                                 sizeof *resolved_path)))
     {
-      fprint_error (s->logfp, "Out of memory");
+      print_error ("Out of memory");
       return NULL;
     }
 
@@ -118,8 +89,8 @@ resolve_path (struct sftp *s, const char *path, char *resolved_path)
                                     resolved_path,
                                     PATH_MAX)) <= 0)
     {
-      fprintf_error (s->logfp, "libssh2_sftp_realpath: %d", err);
-      fprintf_error (s->logfp, "trying to resolve: %s", jpath);
+      print_error ("libssh2_sftp_realpath: %d", err);
+      print_error ("trying to resolve: %s", jpath);
       free (buf);
       resolved_path = NULL;
       errno = ENOENT;
@@ -152,24 +123,15 @@ sftp_init (struct volume *vol, const char *mount_point)
   struct sftp *s = NULL;
   LIBSSH2_SESSION *session = NULL;
   LIBSSH2_SFTP *sftp = NULL;
-  FILE *logfp = NULL;
   int sockfd = -1;
   int err;
 
   if (NULL == vol)
     return NULL;
 
-  if (NULL == vol->log)
-    logfp = stderr;
-  else
-    {
-      if (NULL == (logfp = fopen (vol->log, "a+")))
-        goto error;
-    }
-
   if ((err = libssh2_init (0)) < 0)
     {
-      fprintf_error (logfp, "libssh2_init: %d", err);
+      print_error ("libssh2_init: %d", err);
       return NULL;
     }
 
@@ -187,7 +149,7 @@ sftp_init (struct volume *vol, const char *mount_point)
 
     if (0 != (s = getaddrinfo (vol->addr, vol->port, &hints, &result)))
       {
-        fprint_error (logfp, gai_strerror (s));
+        print_error ("%s", gai_strerror (s));
         goto error;
       }
 
@@ -201,12 +163,12 @@ sftp_init (struct volume *vol, const char *mount_point)
           break;
 
         if (0 != close (sockfd))
-          fprint_error (logfp, strerror (errno));
+          print_error ("%s", strerror (errno));
       }
 
     if (NULL == rp)
       {
-        fprint_error (logfp, "Could not connect");
+        print_error ("Could not connect");
         freeaddrinfo (result);
         goto error;
       }
@@ -216,13 +178,13 @@ sftp_init (struct volume *vol, const char *mount_point)
 
   if (NULL == (session = libssh2_session_init ()))
     {
-      fprint_error (logfp, "libssh2_session_init");
+      print_error ("libssh2_session_init");
       goto error;
     }
 
   if ((err = libssh2_session_startup (session, sockfd)) < 0)
     {
-      fprintf_error (logfp, "libssh2_session_startup: %d", err);
+      print_error ("libssh2_session_startup: %d", err);
       goto error;
     }
 
@@ -231,13 +193,13 @@ sftp_init (struct volume *vol, const char *mount_point)
                                                   vol->private_key,
                                                   vol->passphrase)))
     {
-      fprintf_error (logfp, "libssh2_userauth_publickey_fromfile: %d", err);
+      print_error ("libssh2_userauth_publickey_fromfile: %d", err);
       goto error;
     }
 
   if (NULL == (sftp = libssh2_sftp_init (session)))
     {
-      fprint_error (logfp, "libssh2_sftp_init");
+      print_error ("libssh2_sftp_init");
       goto error;
     }
 
@@ -245,16 +207,15 @@ sftp_init (struct volume *vol, const char *mount_point)
 
   if (NULL == (s = malloc (sizeof *s)))
     {
-      fprint_error (logfp, "Out of memory");
+      print_error ("Out of memory");
       goto error;
     }
 
-  pthread_error (logfp, pthread_mutex_init (&s->mutex, NULL));
+  pthread_error (pthread_mutex_init (&s->mutex, NULL));
 
   s->sockfd = sockfd;
   s->session = session;
   s->sftp = sftp;
-  s->logfp = logfp;
   s->mount_point = (char *) mount_point;
   s->mount_size = strlen (mount_point);
 
@@ -269,14 +230,12 @@ sftp_init (struct volume *vol, const char *mount_point)
 
 error:
   if (NULL != sftp && (err = libssh2_sftp_shutdown (sftp)) < 0)
-    printf_error ("libssh2_sftp_shutdown: %d", err);
+    print_error ("libssh2_sftp_shutdown: %d", err);
   if (NULL != session && (err = libssh2_session_free (session)) < 0)
-    printf_error ("libssh2_session_free: %d", err);
+    print_error ("libssh2_session_free: %d", err);
   if (sockfd < 0 && 0 != close (sockfd))
-    print_error (strerror (errno));
+    print_error ("%s", strerror (errno));
   libssh2_exit ();
-  if (NULL != logfp && 0 != fclose (logfp))
-    print_error (strerror (errno));
   print_error ("sftp_init");
   return NULL;
 }
@@ -289,15 +248,13 @@ sftp_destroy (struct sftp *s)
   if (NULL != s)
     {
       if (NULL != s->sftp && (err = libssh2_sftp_shutdown (s->sftp)) < 0)
-        fprintf_error (s->logfp, "libssh2_sftp_shutdown: %d", err);
+        print_error ("libssh2_sftp_shutdown: %d", err);
       if (NULL != s->session && (err = libssh2_session_free (s->session)) < 0)
-        fprintf_error (s->logfp, "libssh2_session_free: %d", err);
+        print_error ("libssh2_session_free: %d", err);
       if (s->sockfd < 0 && 0 != close (s->sockfd))
-        fprint_error (s->logfp, strerror (errno));
-      pthread_error (s->logfp, pthread_mutex_destroy (&s->mutex));
+        print_error ("%s", strerror (errno));
+      pthread_error (pthread_mutex_destroy (&s->mutex));
       libssh2_exit ();
-      if (0 != fclose (s->logfp))
-        print_error (strerror (errno));
       if (NULL != s->list)
         {
           uint64_t i;
@@ -318,20 +275,20 @@ sftp_stat (struct sftp *s, const char *path, struct stat *buf)
 
   if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf)
     {
-      fprint_error (s->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprint_error (s->logfp, "resolve_path");
+      print_error ("resolve_path");
       return -1;
     }
 
   sftp_lock (s);
   if ((err = libssh2_sftp_stat (s->sftp, rpath, &attrs)) < 0)
     {
-      fprintf_error (s->logfp, "libssh2_sftp_stat: %d", err);
+      print_error ("libssh2_sftp_stat: %d", err);
       err = -1;
       goto exit;
     }
@@ -385,14 +342,14 @@ sftp_fstat (struct sftp_fd *fd, struct stat *buf)
 
   if (NULL == fd || NULL == fd->handle || NULL == buf)
     {
-      fprint_error (fd->sftp_ctx->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   sftp_lock (fd->sftp_ctx);
   if ((err = libssh2_sftp_fstat (fd->handle, &attrs)) < 0)
     {
-      fprintf_error (fd->sftp_ctx->logfp, "libssh2_sftp_fstat: %d", err);
+      print_error ("libssh2_sftp_fstat: %d", err);
       err = -1;
       goto exit;
     }
@@ -446,21 +403,21 @@ sftp_lstat (struct sftp *s, const char *path, struct stat *buf)
 
   if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf)
     {
-      fprint_error (s->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprintf_error (s->logfp, "resolve_path: trying to resolve `%s'", path);
+      print_error ("resolve_path: trying to resolve `%s'", path);
       return -1;
     }
 
   sftp_lock (s);
   if ((err = libssh2_sftp_lstat (s->sftp, rpath, &attrs)) < 0)
     {
-      fprintf_error (s->logfp, "libssh2_sftp_stat: %d", err);
-      fprintf_error (s->logfp, "trying to lstat: %s", rpath);
+      print_error ("libssh2_sftp_stat: %d", err);
+      print_error ("trying to lstat: %s", rpath);
       err = -1;
       goto exit;
     }
@@ -515,20 +472,20 @@ sftp_readlink (struct sftp *s, const char *path, char *buf, size_t bufsize)
   if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf
       || 0 == bufsize)
     {
-      fprint_error (s->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprint_error (s->logfp, "resolve_path");
+      print_error ("resolve_path");
       return -1;
     }
 
   sftp_lock (s);
   if ((err = libssh2_sftp_readlink (s->sftp, rpath, buf, bufsize)) < 0)
     {
-      fprintf_error (s->logfp, "libssh2_sftp_readlink: %d", err);
+      print_error ("libssh2_sftp_readlink: %d", err);
       err = -1;
     }
   sftp_unlock (s);
@@ -545,20 +502,20 @@ sftp_realpath (struct sftp *s, const char *path, char *buf, size_t bufsize)
   if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf
       || 0 == bufsize)
     {
-      fprint_error (s->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprint_error (s->logfp, "resolve_path");
+      print_error ("resolve_path");
       return -1;
     }
 
   sftp_lock (s);
   if ((err = libssh2_sftp_realpath (s->sftp, rpath, buf, bufsize)) < 0)
     {
-      fprintf_error (s->logfp, "libssh2_sftp_readlink: %d", err);
+      print_error ("libssh2_sftp_readlink: %d", err);
       err = -1;
     }
   sftp_unlock (s);
@@ -587,7 +544,7 @@ sftp_open (struct sftp *s, const char *path, int flags, mode_t mode)
 
   if (NULL == s || NULL == s->sftp || NULL == path)
     {
-      fprint_error (s->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return NULL;
     }
 
@@ -598,20 +555,20 @@ sftp_open (struct sftp *s, const char *path, int flags, mode_t mode)
       || (O_CREAT & flags) || (O_EXCL & flags)
       || (O_NOCTTY & flags) || (O_TRUNC & flags))
     {
-      fprint_error (s->logfp, "Invalid flags");
+      print_error ("Invalid flags");
       return NULL;
     }
 
 
   if (NULL == (fd = calloc (1, sizeof *fd)))
     {
-      fprint_error (s->logfp, "Out of memory");
+      print_error ("Out of memory");
       return NULL;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprint_error (s->logfp, "resolve_path");
+      print_error ("resolve_path");
       return NULL;
     }
 
@@ -626,7 +583,7 @@ sftp_open (struct sftp *s, const char *path, int flags, mode_t mode)
     {
       free (fd);
       fd = NULL;
-      fprint_error (s->logfp, "libssh2_sftp_open");
+      print_error ("libssh2_sftp_open");
       goto exit;
     }
 
@@ -646,14 +603,14 @@ sftp_close (struct sftp_fd * fd)
 
   if (NULL == fd || NULL == fd->handle)
     {
-      fprint_error (fd->sftp_ctx->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   sftp_lock (fd->sftp_ctx);
   if ((err = libssh2_sftp_close (fd->handle)) < 0)
     {
-      fprintf_error (fd->sftp_ctx->logfp, "libssh2_sftp_close: %d", err);
+      print_error ("libssh2_sftp_close: %d", err);
       err = -1;
       goto exit;
     }
@@ -672,7 +629,7 @@ sftp_read (struct sftp_fd *fd, void *buf, size_t nbyte, off_t offset)
 
   if (NULL == fd || NULL == fd->handle || NULL == buf || 0 == nbyte)
     {
-      fprint_error (fd->sftp_ctx->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
@@ -688,7 +645,7 @@ sftp_read (struct sftp_fd *fd, void *buf, size_t nbyte, off_t offset)
       int err;
       if (LIBSSH2_FX_EOF == (err = libssh2_sftp_last_error (fd->sftp)))
         errno = EOF;
-      fprintf_error (fd->sftp_ctx->logfp, "libssh2_sftp_read: %d", err);
+      print_error ("libssh2_sftp_read: %d", err);
       amount_read = -1;
     }
   else
@@ -712,14 +669,14 @@ sftp_statvfs (struct sftp *s, const char *path, struct statvfs *buf)
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprint_error (s->logfp, "resolve_path");
+      print_error ("resolve_path");
       return -1;
     }
 
   sftp_lock (s);
   if ((err = libssh2_sftp_statvfs (s->sftp, rpath, strlen (rpath), &st)) < 0)
     {
-      fprint_error (s->logfp, "libssh2_sftp_statvfs: %d");
+      print_error ("libssh2_sftp_statvfs: %d", err);
       err = -1;
       goto exit;
     }
@@ -751,14 +708,14 @@ sftp_fstatvfs (struct sftp_fd *fd, struct statvfs *buf)
 
   if (NULL == fd || NULL == fd->handle || NULL == buf)
     {
-      fprint_error (fd->sftp_ctx->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   sftp_lock (fd->sftp_ctx);
   if ((err = libssh2_sftp_fstatvfs (fd->handle, &st)) < 0)
     {
-      fprint_error (fd->sftp_ctx->logfp, "libssh2_sftp_fstatvfs: %d");
+      print_error ("libssh2_sftp_fstatvfs: %d", err);
       err = -1;
       goto exit;
     }
@@ -790,29 +747,29 @@ sftp_opendir (struct sftp *s, const char *path)
 
   if (NULL == s || NULL == s->sftp || NULL == path)
     {
-      fprint_error (s->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return NULL;
     }
 
   if (NULL == (rpath = resolve_path (s, path, NULL)))
     {
-      fprint_error (s->logfp, "resolve_path");
+      print_error ("resolve_path");
       return NULL;
     }
 
   sftp_lock (s);
   if (NULL == (handle = libssh2_sftp_opendir (s->sftp, rpath)))
     {
-      fprint_error (s->logfp, "libssh2_sftp_opendir");
+      print_error ("libssh2_sftp_opendir");
       goto exit;
     }
 
   if (NULL == (dir = malloc (sizeof *dir)))
     {
       int err;
-      fprint_error (s->logfp, "Out of memory");
+      print_error ("Out of memory");
       if ((err = libssh2_sftp_closedir (handle)) < 0)
-        fprintf_error (s->logfp, "libssh2_sftp_closedir: %d", err);
+        print_error ("libssh2_sftp_closedir: %d", err);
       goto exit;
     }
 
@@ -830,18 +787,15 @@ sftp_readdir (struct sftp_dir *dir)
   struct dirent *d = NULL;
   int err;
 
-  if (NULL == dir || NULL == dir->sftp_ctx || NULL == dir->sftp_ctx->logfp)
-    return NULL;
-
-  if (NULL == dir->handle)
+  if (NULL == dir || NULL == dir->sftp_ctx || NULL == dir->handle)
     {
-      fprint_error (dir->sftp_ctx->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return NULL;
     }
 
   if (NULL == (d = calloc (1, sizeof *d)))
     {
-      fprint_error (dir->sftp_ctx->logfp, "Out of memory");
+      print_error ("Out of memory");
       return NULL;
     }
 
@@ -871,19 +825,16 @@ sftp_closedir (struct sftp_dir *dir)
 {
   int err;
 
-  if (NULL == dir || NULL == dir->sftp_ctx || NULL == dir->sftp_ctx->logfp)
-    return -1;
-
-  if (NULL == dir->handle)
+  if (NULL == dir || NULL == dir->sftp_ctx || NULL == dir->handle)
     {
-      fprint_error (dir->sftp_ctx->logfp, "Invalid arguments");
+      print_error ("Invalid arguments");
       return -1;
     }
 
   sftp_lock (dir->sftp_ctx);
   if ((err = libssh2_sftp_closedir (dir->handle)) < 0)
     {
-      fprintf_error (dir->sftp_ctx->logfp, "libssh2_sftp_closedir: %d", err);
+      print_error ("libssh2_sftp_closedir: %d", err);
       err = -1;
     }
   sftp_unlock (dir->sftp_ctx);

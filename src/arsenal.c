@@ -13,25 +13,12 @@
 #include <sftp.h>
 #include <sftp_tree.h>
 
-#define print_error(msg){ \
-  fprintf (logfp, "[%s:%d in %s] ", __FILE__, __LINE__, __func__); \
-  fprintf (logfp, "%s\n", msg); \
-  fflush (logfp); \
-}
+#include <debug.h>
 
-#define printf_error(format, msg){ \
-  fprintf (logfp, "[%s:%d in %s] ", __FILE__, __LINE__, __func__); \
-  fprintf (logfp, format, msg); \
-  fprintf (logfp, "\n"); \
-  fflush (logfp); \
-}
-
-#define LOG_FILE "/tmp/arsenal.log"
-
+FILE *DEBUGFP = NULL;
 static pthread_mutex_t mutex;
 static struct sftp_node *sftp_context = NULL;
 static char *mount_point;
-static FILE *logfp;
 
 struct options
 {
@@ -191,12 +178,14 @@ arsenal_init (struct fuse_conn_info *conn)
 {
   (void) conn;
 
-  logfp = fopen (LOG_FILE, "a+");
+  if (NULL == (DEBUGFP = fopen (DEBUGLOG, "a+")))
+    return NULL;
+
   pthread_mutex_init (&mutex, NULL);
 
   if (NULL == options.config_file_path)
     {
-      print_error ("");
+      print_error ("Must specify configuration file");
       return NULL;
     }
 
@@ -214,7 +203,7 @@ arsenal_destroy (void *vptr)
 {
   (void) vptr;
   sftp_tree_destroy (sftp_context);
-  fclose (logfp);
+  fclose (DEBUGFP);
   pthread_mutex_destroy (&mutex);
 }
 

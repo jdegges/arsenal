@@ -18,7 +18,6 @@ struct volume
   char root[PATH_MAX];
   char addr[ADDR_MAX];
   char port[PORT_MAX];
-  char log[PATH_MAX];
   char public_key[PATH_MAX];
   char private_key[PATH_MAX];
   char username[NAME_MAX];
