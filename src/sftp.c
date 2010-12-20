@@ -365,7 +365,9 @@ sftp_stat (struct sftp *s, const char *path, struct stat *buf)
     {
       buf->st_atime = attrs.atime;
       buf->st_mtime = attrs.mtime;
-      buf->st_ctime = attrs.atime < attrs.mtime ? attrs.mtime : attrs.atime;
+      /* ctime is not supported in this version of sftp. 99.9% of applications
+       * should be ok with mtime. */
+      buf->st_ctime = attrs.mtime;
     }
 
   err = 0;
@@ -424,7 +426,9 @@ sftp_fstat (struct sftp_fd *fd, struct stat *buf)
     {
       buf->st_atime = attrs.atime;
       buf->st_mtime = attrs.mtime;
-      buf->st_ctime = attrs.atime < attrs.mtime ? attrs.mtime : attrs.atime;
+      /* ctime is not supported in this version of sftp. 99.9% of applications
+       * should be ok with mtime. */
+      buf->st_ctime = attrs.mtime;
     }
 
   err = 0;
@@ -490,7 +494,9 @@ sftp_lstat (struct sftp *s, const char *path, struct stat *buf)
     {
       buf->st_atime = attrs.atime;
       buf->st_mtime = attrs.mtime;
-      buf->st_ctime = attrs.atime < attrs.mtime ? attrs.mtime : attrs.atime;
+      /* ctime is not supported in this version of sftp. 99.9% of applications
+       * should be ok with mtime. */
+      buf->st_ctime = attrs.mtime;
     }
 
   err = 0;
