@@ -64,22 +64,45 @@ struct sftp_fd
 static char *
 resolve_path (struct sftp *s, const char *path, char *resolved_path)
 {
-  char jpath[PATH_MAX];
+  char *jpath = NULL;
   char *buf = NULL;
+  int jsize = 0;
+  int bsize = 0;
   size_t i;
   int err;
 
   if (NULL == s || NULL == path)
     return NULL;
 
-  if (snprintf (jpath, PATH_MAX, "%s/%s", s->jail, path) < 0)
-    return NULL;
+  jsize = snprintf (jpath, jsize, "%s/%s", s->jail, path);
+  if (jsize < 0)
+    {
+      print_error ("snprintf error o0");
+      return NULL;
+    }
 
+  jsize++;
+  if (NULL == (jpath = malloc (jsize)))
+    {
+      print_error ("Out of memory");
+      return NULL;
+    }
+
+  err = snprintf (jpath, jsize, "%s/%s", s->jail, path);
+  if (err < 0 || jsize <= err)
+    {
+      print_error ("Absurd failure");
+      free (jpath);
+      return NULL;
+    }
+
+  bsize = PATH_MAX < jsize ? jsize : PATH_MAX;
   if (NULL == resolved_path
-      && NULL == (buf = resolved_path = calloc (PATH_MAX,
+      && NULL == (buf = resolved_path = calloc (bsize,
                                                 sizeof *resolved_path)))
     {
       print_error ("Out of memory");
+      free (jpath);
       return NULL;
     }
 
@@ -87,34 +110,34 @@ resolve_path (struct sftp *s, const char *path, char *resolved_path)
   if ((err = libssh2_sftp_realpath (s->sftp,
                                     jpath,
                                     resolved_path,
-                                    PATH_MAX)) <= 0)
+                                    bsize)) <= 0)
     {
-      print_error ("libssh2_sftp_realpath: %d", err);
-      print_error ("trying to resolve: %s", jpath);
-      free (buf);
-      resolved_path = NULL;
+      print_error ("libssh2_sftp_realpath: `%d', trying to resolve `%s'", err,
+                   jpath);
+      free (jpath);
+      jpath = NULL;
       errno = ENOENT;
       goto exit;
     }
 
-  /* make sure the resolved path is within the jail */
-  for (i = 0; i < s->jail_len && s->jail[i] == resolved_path[i] ; i++);
+  /* make sure the resolved path is within the jail
+   * XXX perhaps the size of a `realpath' packet could be used to determine the
+   * existence of a file outside the jail */
+  for (i = 0; i < s->jail_len && s->jail[i] == resolved_path[i]; i++);
 
   /* if its not in the jail then return NULL */
   if (i < s->jail_len)
     {
-      free (buf);
-      resolved_path = NULL;
+      free (jpath);
+      jpath = NULL;
       errno = EACCES;
       goto exit;
     }
 
-  if (resolved_path)
-    memcpy (resolved_path, jpath, PATH_MAX);
-
 exit:
   sftp_unlock (s);
-  return resolved_path;
+  free (resolved_path);
+  return jpath;
 }
 
 struct sftp *
