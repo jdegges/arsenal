@@ -7,7 +7,6 @@
         <root>/q/4/arsenal/test-dir/a</root>
         <address>127.0.0.1</address>
         <port>22</port>
-        <log>/tmp/arsenal_volume_one.log</log>
         <public_key>/home/user/.ssh/id_rsa.pub</public_key>
         <private_key>/home/user/.ssh/id_rsa</private_key>
         <username>user</username>
@@ -17,7 +16,6 @@
         <root>/q/4/arsenal/test-dir/b</root>
         <address>127.0.0.1</address>
         <port>22</port>
-        <log>/tmp/arsenal_volume_two.log</log>
         <public_key>/home/user/.ssh/id_rsa.pub</public_key>
         <private_key>/home/user/.ssh/id_rsa</private_key>
         <username>user</username>
@@ -29,7 +27,6 @@
         <root>/q/4/arsenal/test-dir/c</root>
         <address>127.0.0.1</address>
         <port>22</port>
-        <log>/tmp/arsenal_volume_one.log</log>
         <public_key>/home/user/.ssh/id_rsa.pub</public_key>
         <private_key>/home/user/.ssh/id_rsa</private_key>
         <username>user</username>
@@ -39,7 +36,6 @@
         <root>/q/4/arsenal/test-dir/d</root>
         <address>127.0.0.1</address>
         <port>22</port>
-        <log>/tmp/arsenal_volume_two.log</log>
         <public_key>/home/user/.ssh/id_rsa.pub</public_key>
         <private_key>/home/user/.ssh/id_rsa</private_key>
         <username>user</username>
