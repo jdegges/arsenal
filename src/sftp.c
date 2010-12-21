@@ -159,6 +159,9 @@ sftp_init (struct volume *vol, const char *mount_point)
       return NULL;
     }
 
+  if (vol->name && vol->addr)
+    print_error ("Connecting to `%s' at `%s' ...", vol->name, vol->addr);
+
   /* connect to host/port */
   {
     struct addrinfo hints;
