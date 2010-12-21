@@ -74,7 +74,7 @@ resolve_path (struct sftp *s, const char *path, char *resolved_path)
   if (NULL == s || NULL == path)
     return NULL;
 
-  jsize = snprintf (jpath, jsize, "%s/%s", s->jail, path);
+  jsize = snprintf (NULL, jsize, "%s/%s", s->jail, path);
   if (jsize < 0)
     {
       print_error ("snprintf error o0");
@@ -89,7 +89,7 @@ resolve_path (struct sftp *s, const char *path, char *resolved_path)
     }
 
   err = snprintf (jpath, jsize, "%s/%s", s->jail, path);
-  if (err < 0 || jsize <= err)
+  if (jsize - 1 != err)
     {
       print_error ("Absurd failure");
       free (jpath);
@@ -524,11 +524,11 @@ strshift (char *buf, int size, int amount)
   if (!amount)
     return;
 
-  if (amount < 0)
+  if (amount < 0) /* shift left */
     for (i = 0, j = -amount; i < size && j < size; i++, j++)
       buf[i] = buf[j];
-  else
-    for (i = size-2, j = size-2-amount; 0 < i && 0 < j; i--, j--)
+  else /* shift right */
+    for (i = size-2, j = size-2-amount; 0 <= i && 0 <= j; i--, j--)
       buf[i] = buf[j];
 
   buf[size-1] = '\0';
