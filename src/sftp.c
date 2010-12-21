@@ -13,6 +13,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
 #include <netdb.h>
 #include <pthread.h>
 #include <string.h>
@@ -289,36 +290,84 @@ sftp_destroy (struct sftp *s)
     }
 }
 
-int
-sftp_stat (struct sftp *s, const char *path, struct stat *buf)
+enum stat_type
+{
+  SFTP_STAT,
+  SFTP_FSTAT,
+  SFTP_LSTAT
+};
+
+static int
+do_sftp_stat (enum stat_type type, void *a0, void *a1, void *a2)
 {
   LIBSSH2_SFTP_ATTRIBUTES attrs;
-  char *rpath;
+  struct sftp *s = NULL;
+  struct sftp_fd *fd;
+  struct stat *buf;
+  char *path;
+  char *rpath = NULL;
   int err;
 
-  if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf)
+  /* validate arguments (to a minor extent) */
+  switch (type)
     {
-      print_error ("Invalid arguments");
-      return -1;
-    }
+      case SFTP_STAT:
+      case SFTP_LSTAT:
+        s = a0, path = a1, buf = a2;
+        if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf)
+          {
+            print_error ("Invalid arguments");
+            return -1;
+          }
 
-  if (NULL == (rpath = resolve_path (s, path, NULL)))
-    {
-      print_error ("resolve_path");
-      return -1;
-    }
+        if (NULL == (rpath = resolve_path (s, path, NULL)))
+          {
+            print_error ("resolve_path");
+            return -1;
+          }
 
-  sftp_lock (s);
-  if ((err = libssh2_sftp_stat (s->sftp, rpath, &attrs)) < 0)
-    {
-      print_error ("libssh2_sftp_stat: %d", err);
-      err = -1;
-      goto exit;
+        sftp_lock (s);
+        if (type == SFTP_STAT)
+          err = libssh2_sftp_stat (s->sftp, rpath, &attrs);
+        else
+          err = libssh2_sftp_lstat (s->sftp, rpath, &attrs);
+
+        if (err < 0)
+          {
+            print_error ("libssh2_sftp_(l)stat: %d", err);
+            err = -1;
+            goto exit;
+          }
+        break;
+      case SFTP_FSTAT:
+        fd = a0, buf = a1;
+        if (NULL == fd || NULL == fd->handle || NULL == fd->sftp_ctx
+         || NULL == buf)
+          {
+            print_error ("Invalid arguments");
+            return -1;
+          }
+
+        s = fd->sftp_ctx;
+        sftp_lock (s);
+        if ((err = libssh2_sftp_fstat (fd->handle, &attrs)) < 0)
+          {
+            print_error ("libssh2_sftp_fstat: %d", err);
+            err = -1;
+            goto exit;
+          }
+        break;
+      default:
+        print_error ("Invalid stat type");
+        return -1;
     }
 
   memset (buf, 0, sizeof *buf);
   if (attrs.flags & LIBSSH2_SFTP_ATTR_SIZE)
-    buf->st_size = attrs.filesize;
+    {
+      buf->st_size = attrs.filesize;
+      buf->st_blocks = ceil (attrs.filesize / 512.0);
+    }
   if (attrs.flags & LIBSSH2_SFTP_ATTR_UIDGID)
     {
       buf->st_uid = attrs.uid;
@@ -355,135 +404,24 @@ exit:
   sftp_unlock (s);
   free (rpath);
   return err;
+}
+
+int
+sftp_stat (struct sftp *s, const char *path, struct stat *buf)
+{
+  return do_sftp_stat (SFTP_STAT, s, (char *) path, buf);
 }
 
 int
 sftp_fstat (struct sftp_fd *fd, struct stat *buf)
 {
-  LIBSSH2_SFTP_ATTRIBUTES attrs;
-  int err;
-
-  if (NULL == fd || NULL == fd->handle || NULL == buf)
-    {
-      print_error ("Invalid arguments");
-      return -1;
-    }
-
-  sftp_lock (fd->sftp_ctx);
-  if ((err = libssh2_sftp_fstat (fd->handle, &attrs)) < 0)
-    {
-      print_error ("libssh2_sftp_fstat: %d", err);
-      err = -1;
-      goto exit;
-    }
-
-  memset (buf, 0, sizeof *buf);
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_SIZE)
-    buf->st_size = attrs.filesize;
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_UIDGID)
-    {
-      buf->st_uid = attrs.uid;
-      buf->st_gid = attrs.gid;
-    }
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS)
-    buf->st_mode = (LIBSSH2_SFTP_S_ISLNK (attrs.permissions) ? S_IFLNK : 0)
-                 | (LIBSSH2_SFTP_S_ISREG (attrs.permissions) ? S_IFREG : 0)
-                 | (LIBSSH2_SFTP_S_ISDIR (attrs.permissions) ? S_IFDIR : 0)
-                 | (LIBSSH2_SFTP_S_ISCHR (attrs.permissions) ? S_IFCHR : 0)
-                 | (LIBSSH2_SFTP_S_ISBLK (attrs.permissions) ? S_IFBLK : 0)
-                 | (LIBSSH2_SFTP_S_ISFIFO (attrs.permissions) ? S_IFIFO : 0)
-                 | (LIBSSH2_SFTP_S_ISSOCK (attrs.permissions) ? S_IFSOCK : 0)
-                 | (LIBSSH2_SFTP_S_IRUSR & attrs.permissions ? S_IRUSR : 0)
-                 | (LIBSSH2_SFTP_S_IWUSR & attrs.permissions ? S_IWUSR : 0)
-                 | (LIBSSH2_SFTP_S_IXUSR & attrs.permissions ? S_IXUSR : 0)
-                 | (LIBSSH2_SFTP_S_IRGRP & attrs.permissions ? S_IRGRP : 0)
-                 | (LIBSSH2_SFTP_S_IWGRP & attrs.permissions ? S_IWGRP : 0)
-                 | (LIBSSH2_SFTP_S_IXGRP & attrs.permissions ? S_IXGRP : 0)
-                 | (LIBSSH2_SFTP_S_IROTH & attrs.permissions ? S_IROTH : 0)
-                 | (LIBSSH2_SFTP_S_IWOTH & attrs.permissions ? S_IWOTH : 0)
-                 | (LIBSSH2_SFTP_S_IXOTH & attrs.permissions ? S_IXOTH : 0);
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_ACMODTIME)
-    {
-      buf->st_atime = attrs.atime;
-      buf->st_mtime = attrs.mtime;
-      /* ctime is not supported in this version of sftp. 99.9% of applications
-       * should be ok with mtime. */
-      buf->st_ctime = attrs.mtime;
-    }
-
-  err = 0;
-exit:
-  sftp_unlock (fd->sftp_ctx);
-  return err;
+  return do_sftp_stat (SFTP_FSTAT, fd, buf, NULL);
 }
 
 int
 sftp_lstat (struct sftp *s, const char *path, struct stat *buf)
 {
-  LIBSSH2_SFTP_ATTRIBUTES attrs;
-  char *rpath;
-  int err;
-
-  if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf)
-    {
-      print_error ("Invalid arguments");
-      return -1;
-    }
-
-  if (NULL == (rpath = resolve_path (s, path, NULL)))
-    {
-      print_error ("resolve_path: trying to resolve `%s'", path);
-      return -1;
-    }
-
-  sftp_lock (s);
-  if ((err = libssh2_sftp_lstat (s->sftp, rpath, &attrs)) < 0)
-    {
-      print_error ("libssh2_sftp_stat: %d", err);
-      print_error ("trying to lstat: %s", rpath);
-      err = -1;
-      goto exit;
-    }
-
-  memset (buf, 0, sizeof *buf);
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_SIZE)
-    buf->st_size = attrs.filesize;
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_UIDGID)
-    {
-      buf->st_uid = attrs.uid;
-      buf->st_gid = attrs.gid;
-    }
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS)
-    buf->st_mode = (LIBSSH2_SFTP_S_ISLNK (attrs.permissions) ? S_IFLNK : 0)
-                 | (LIBSSH2_SFTP_S_ISREG (attrs.permissions) ? S_IFREG : 0)
-                 | (LIBSSH2_SFTP_S_ISDIR (attrs.permissions) ? S_IFDIR : 0)
-                 | (LIBSSH2_SFTP_S_ISCHR (attrs.permissions) ? S_IFCHR : 0)
-                 | (LIBSSH2_SFTP_S_ISBLK (attrs.permissions) ? S_IFBLK : 0)
-                 | (LIBSSH2_SFTP_S_ISFIFO (attrs.permissions) ? S_IFIFO : 0)
-                 | (LIBSSH2_SFTP_S_ISSOCK (attrs.permissions) ? S_IFSOCK : 0)
-                 | (LIBSSH2_SFTP_S_IRUSR & attrs.permissions ? S_IRUSR : 0)
-                 | (LIBSSH2_SFTP_S_IWUSR & attrs.permissions ? S_IWUSR : 0)
-                 | (LIBSSH2_SFTP_S_IXUSR & attrs.permissions ? S_IXUSR : 0)
-                 | (LIBSSH2_SFTP_S_IRGRP & attrs.permissions ? S_IRGRP : 0)
-                 | (LIBSSH2_SFTP_S_IWGRP & attrs.permissions ? S_IWGRP : 0)
-                 | (LIBSSH2_SFTP_S_IXGRP & attrs.permissions ? S_IXGRP : 0)
-                 | (LIBSSH2_SFTP_S_IROTH & attrs.permissions ? S_IROTH : 0)
-                 | (LIBSSH2_SFTP_S_IWOTH & attrs.permissions ? S_IWOTH : 0)
-                 | (LIBSSH2_SFTP_S_IXOTH & attrs.permissions ? S_IXOTH : 0);
-  if (attrs.flags & LIBSSH2_SFTP_ATTR_ACMODTIME)
-    {
-      buf->st_atime = attrs.atime;
-      buf->st_mtime = attrs.mtime;
-      /* ctime is not supported in this version of sftp. 99.9% of applications
-       * should be ok with mtime. */
-      buf->st_ctime = attrs.mtime;
-    }
-
-  err = 0;
-exit:
-  sftp_unlock (s);
-  free (rpath);
-  return err;
+  return do_sftp_stat (SFTP_LSTAT, s, (char *) path, buf);
 }
 
 ssize_t
