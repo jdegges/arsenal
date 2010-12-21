@@ -357,7 +357,6 @@ static struct statvfs sbuf;
 static int
 is_nz_statvfs (void *v, void *p)
 {
-  static struct statvfs sbuf = {0};
   struct args *a = v;
   struct statvfs *buf = a->a1;
   if (0 != (ssize_t) p)
