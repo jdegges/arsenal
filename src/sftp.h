@@ -40,9 +40,6 @@ int
 sftp_lstat (struct sftp *s, const char *path, struct stat *buf);
 
 ssize_t
-sftp_readlink (struct sftp *s, const char *path, char *buf, size_t bufsize);
-
-ssize_t
 sftp_realpath (struct sftp *s, const char *path, char *buf, size_t bufsize);
 
 struct sftp_fd *
@@ -56,9 +53,6 @@ sftp_read (struct sftp_fd *fd, void *buf, size_t nbyte, off_t offset);
 
 int
 sftp_statvfs (struct sftp *s, const char *path, struct statvfs *buf);
-
-int
-sftp_fstatvfs (struct sftp_fd *fd, struct statvfs *buf);
 
 struct sftp_dir *
 sftp_opendir (struct sftp *s, const char *path);

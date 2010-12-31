@@ -19,10 +19,6 @@ int
 sftp_tree_lstat (struct sftp_node *root, const char *path, struct stat *buf);
 
 ssize_t
-sftp_tree_readlink (struct sftp_node *root, const char *path, char *buf,
-                    size_t bufsize);
-
-ssize_t
 sftp_tree_realpath (struct sftp_node *root, const char *path, char *buf,
                     size_t bufsize);
 

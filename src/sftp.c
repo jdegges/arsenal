@@ -427,36 +427,6 @@ sftp_lstat (struct sftp *s, const char *path, struct stat *buf)
   return do_sftp_stat (SFTP_LSTAT, s, (char *) path, buf);
 }
 
-ssize_t
-sftp_readlink (struct sftp *s, const char *path, char *buf, size_t bufsize)
-{
-  char *rpath;
-  int err;
-
-  if (NULL == s || NULL == s->sftp || NULL == path || NULL == buf
-      || 0 == bufsize)
-    {
-      print_error ("Invalid arguments");
-      return -1;
-    }
-
-  if (NULL == (rpath = resolve_path (s, path, NULL)))
-    {
-      print_error ("resolve_path");
-      return -1;
-    }
-
-  sftp_lock (s);
-  if ((err = libssh2_sftp_readlink (s->sftp, rpath, buf, bufsize)) < 0)
-    {
-      print_error ("libssh2_sftp_readlink: %d", err);
-      err = -1;
-    }
-  sftp_unlock (s);
-  free (rpath);
-  return err;
-}
-
 static void
 strshift (char *buf, int size, int amount)
 {
@@ -684,44 +654,6 @@ sftp_statvfs (struct sftp *s, const char *path, struct statvfs *buf)
 exit:
   sftp_unlock (s);
   free (rpath);
-  return err;
-}
-
-int
-sftp_fstatvfs (struct sftp_fd *fd, struct statvfs *buf)
-{
-  LIBSSH2_SFTP_STATVFS st;
-  int err;
-
-  if (NULL == fd || NULL == fd->handle || NULL == buf)
-    {
-      print_error ("Invalid arguments");
-      return -1;
-    }
-
-  sftp_lock (fd->sftp_ctx);
-  if ((err = libssh2_sftp_fstatvfs (fd->handle, &st)) < 0)
-    {
-      print_error ("libssh2_sftp_fstatvfs: %d", err);
-      err = -1;
-      goto exit;
-    }
-
-  buf->f_bsize = st.f_bsize;
-  buf->f_frsize = st.f_frsize;
-  buf->f_blocks = st.f_blocks;
-  buf->f_bfree = st.f_bfree;
-  buf->f_bavail = st.f_bavail;
-  buf->f_files = st.f_files;
-  buf->f_ffree = st.f_ffree;
-  buf->f_favail = st.f_favail;
-  buf->f_fsid = st.f_fsid;
-  buf->f_flag = st.f_flag;
-  buf->f_namemax = st.f_namemax;
-
-  err = 0;
-exit:
-  sftp_unlock (fd->sftp_ctx);
   return err;
 }
 

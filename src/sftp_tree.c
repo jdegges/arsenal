@@ -340,16 +340,16 @@ int
 sftp_tree_stat (struct sftp_node *root, const char *path, struct stat *buf)
 {
   struct args a = {(char *) path, buf};
-  return (int) traverse_tree (root, (void *(*)()) sftp_stat, &a, 2,
-                              (void *) -1, is_nz_stat);
+  return (ssize_t) traverse_tree (root, (void *(*)()) sftp_stat, &a, 2,
+                                  (void *) -1, is_nz_stat);
 }
 
 int
 sftp_tree_lstat (struct sftp_node *root, const char *path, struct stat *buf)
 {
   struct args a = {(char *) path, buf};
-  return (int) traverse_tree (root, (void *(*)()) sftp_lstat, &a, 2,
-                              (void *) -1, is_nz_stat);
+  return (ssize_t ) traverse_tree (root, (void *(*)()) sftp_lstat, &a, 2,
+                                   (void *) -1, is_nz_stat);
 }
 
 static struct statvfs sbuf;
@@ -381,8 +381,8 @@ sftp_tree_statvfs (struct sftp_node *root, const char *path,
   sbuf.f_files = 0;
   sbuf.f_ffree = 0;
   sbuf.f_favail = 0;
-  return (int) traverse_tree (root, (void *(*)()) sftp_statvfs, &a, 2,
-                              (void *) -1, is_nz_statvfs);
+  return (ssize_t) traverse_tree (root, (void *(*)()) sftp_statvfs, &a, 2,
+                                  (void *) -1, is_nz_statvfs);
 }
 
 static int
@@ -390,15 +390,6 @@ is_ltz (void *a, void *p)
 {
   (void) a;
   return (ssize_t) p < 0 ? 1 : 0;
-}
-
-ssize_t
-sftp_tree_readlink (struct sftp_node *root, const char *path, char *buf,
-                    size_t bufsize)
-{
-  struct args a = {(char *) path, buf, (void *) bufsize};
-  return (ssize_t) traverse_tree (root, (void *(*)()) sftp_readlink, &a, 3,
-                                  (void *) -1, is_ltz);
 }
 
 ssize_t
@@ -430,7 +421,8 @@ struct sftp_fd *
 sftp_tree_open (struct sftp_node *root, const char *path, int flags,
                 mode_t mode)
 {
-  struct args a = {(char *) path, (void *) flags, (void *) mode};
+  struct args a = {(char *) path, (void *) (size_t) flags,
+                   (void *) (size_t) mode};
   return (struct sftp_fd *) traverse_tree (root, (void *(*)()) sftp_open, &a,
                                            3, NULL, is_null_open);
 }
